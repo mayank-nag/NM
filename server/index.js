@@ -54,14 +54,29 @@ wss.on("connection", (ws, req) => {
     }
   }
 
+  // Mark connection alive for heartbeat
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
+
   ws.on("message", (data) => {
+    const str = data.toString();
+
+    // Handle client-level keep-alive pings
+    try {
+      const parsed = JSON.parse(str);
+      if (parsed.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong" }));
+        return;
+      }
+    } catch (_) {}
+
     // Relay to the other client in the same room
     const room = rooms.get(ws.roomId);
     if (!room) return;
 
     for (const client of room) {
       if (client !== ws && client.readyState === 1) {
-        client.send(data.toString());
+        client.send(str);
       }
     }
   });
@@ -91,6 +106,19 @@ wss.on("connection", (ws, req) => {
     console.error(`[!] WebSocket error in room "${ws.roomId}":`, err.message);
   });
 });
+
+// Server-side heartbeat: detect and clean up dead connections
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      console.log(`[!] Terminating dead connection in room "${ws.roomId}"`);
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL);
 
 server.listen(PORT, () => {
   console.log(`Relay server running on port ${PORT}`);

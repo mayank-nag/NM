@@ -21,8 +21,9 @@ class PairingScreen extends StatefulWidget {
 class _PairingScreenState extends State<PairingScreen> {
   final _codeController = TextEditingController();
   String? _generatedCode;
-  String? _error;
+  String? _statusMessage;
   bool _isConnecting = false;
+  bool _isError = false;
   late final TextEditingController _serverController;
 
   @override
@@ -47,53 +48,64 @@ class _PairingScreenState extends State<PairingScreen> {
   void _generateCode() {
     setState(() {
       _generatedCode = ConnectionService.generateRoomCode();
-      _error = null;
+      _statusMessage = null;
+      _isError = false;
     });
   }
 
   Future<void> _connectWithCode(String code) async {
     if (code.trim().isEmpty) {
-      setState(() => _error = 'Enter a room code');
+      setState(() {
+        _statusMessage = 'Enter a room code';
+        _isError = true;
+      });
       return;
     }
 
     setState(() {
       _isConnecting = true;
-      _error = null;
+      _statusMessage = null;
+      _isError = false;
     });
 
     await widget.connectionService.setServerUrl(_serverController.text.trim());
-
-    final sub = widget.connectionService.status.listen((status) {
-      if (status == ConnectionStatus.connected ||
-          status == ConnectionStatus.partnerOnline) {
-        widget.onPaired();
-      } else if (status == ConnectionStatus.disconnected && _isConnecting) {
-        if (mounted) {
-          setState(() {
-            _isConnecting = false;
-            _error = 'Could not connect. Check your server URL and try again.';
-          });
-        }
-      }
-    });
-
     await widget.connectionService.connect(code.trim().toUpperCase());
 
-    await Future.delayed(const Duration(seconds: 5));
-    if (_isConnecting && mounted) {
-      sub.cancel();
-      if (widget.connectionService.currentStatus == ConnectionStatus.connected ||
-          widget.connectionService.currentStatus == ConnectionStatus.partnerOnline) {
-        widget.onPaired();
-      } else {
+    // Wait for connection with periodic status updates
+    // Render free-tier cold starts can take 30-50s
+    const maxWait = 90;
+    for (var i = 0; i < maxWait; i++) {
+      await Future.delayed(const Duration(seconds: 1));
+
+      final s = widget.connectionService.currentStatus;
+      if (s == ConnectionStatus.connected || s == ConnectionStatus.partnerOnline) {
+        if (mounted) widget.onPaired();
+        return;
+      }
+
+      if (mounted) {
+        final remaining = maxWait - i;
+        String msg;
+        if (remaining > 60) {
+          msg = 'Waking up server... this may take a moment';
+        } else if (remaining > 30) {
+          msg = 'Server is starting up... ${remaining}s';
+        } else {
+          msg = 'Still connecting... ${remaining}s';
+        }
         setState(() {
-          _isConnecting = false;
-          _error = 'Connection timed out. Check your server URL.';
+          _statusMessage = msg;
+          _isError = false;
         });
       }
-    } else {
-      sub.cancel();
+    }
+
+    if (mounted) {
+      setState(() {
+        _isConnecting = false;
+        _statusMessage = 'Connection timed out. Check your server URL and internet connection.';
+        _isError = true;
+      });
     }
   }
 
@@ -147,7 +159,7 @@ class _PairingScreenState extends State<PairingScreen> {
                 controller: _serverController,
                 style: TextStyle(color: c.textPrimary, fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: 'ws://your-server:3000',
+                  hintText: 'wss://your-server.com',
                   hintStyle: TextStyle(color: c.textMuted.withValues(alpha: 0.5)),
                   filled: true,
                   fillColor: c.inputBackground,
@@ -320,19 +332,21 @@ class _PairingScreenState extends State<PairingScreen> {
                       ),
               ),
 
-              if (_error != null) ...[
+              if (_statusMessage != null) ...[
                 const SizedBox(height: 16),
                 Text(
-                  _error!,
+                  _statusMessage!,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: c.statusDisconnected, fontSize: 13),
+                  style: TextStyle(
+                    color: _isError ? c.statusDisconnected : c.textMuted,
+                    fontSize: 13,
+                  ),
                 ),
               ],
 
               const SizedBox(height: 48),
               Text(
                 'Share the room code with your partner.\nBoth of you connect with the same code.',
-                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: c.textMuted,
                   fontSize: 12,

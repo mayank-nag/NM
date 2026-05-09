@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nm_messenger/main.dart';
+import 'package:nm/main.dart';
 
 void main() {
   testWidgets('App starts', (WidgetTester tester) async {
