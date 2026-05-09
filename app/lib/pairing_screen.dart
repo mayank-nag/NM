@@ -20,10 +20,12 @@ class PairingScreen extends StatefulWidget {
 
 class _PairingScreenState extends State<PairingScreen> {
   final _codeController = TextEditingController();
+  final _passphraseController = TextEditingController();
   String? _generatedCode;
   String? _statusMessage;
   bool _isConnecting = false;
   bool _isError = false;
+  bool _passphraseVisible = false;
   late final TextEditingController _serverController;
 
   @override
@@ -31,6 +33,7 @@ class _PairingScreenState extends State<PairingScreen> {
     super.initState();
     _serverController = TextEditingController();
     _loadServerUrl();
+    _loadSavedPassphrase();
   }
 
   Future<void> _loadServerUrl() async {
@@ -38,10 +41,18 @@ class _PairingScreenState extends State<PairingScreen> {
     _serverController.text = url;
   }
 
+  Future<void> _loadSavedPassphrase() async {
+    final passphrase = widget.connectionService.crypto.passphrase;
+    if (passphrase != null) {
+      _passphraseController.text = passphrase;
+    }
+  }
+
   @override
   void dispose() {
     _codeController.dispose();
     _serverController.dispose();
+    _passphraseController.dispose();
     super.dispose();
   }
 
@@ -62,11 +73,23 @@ class _PairingScreenState extends State<PairingScreen> {
       return;
     }
 
+    final passphrase = _passphraseController.text.trim();
+    if (passphrase.isEmpty) {
+      setState(() {
+        _statusMessage = 'Enter a shared passphrase for encryption';
+        _isError = true;
+      });
+      return;
+    }
+
     setState(() {
       _isConnecting = true;
       _statusMessage = null;
       _isError = false;
     });
+
+    // Configure encryption with the passphrase
+    await widget.connectionService.crypto.configure(passphrase);
 
     await widget.connectionService.setServerUrl(_serverController.text.trim());
     await widget.connectionService.connect(code.trim().toUpperCase());
@@ -142,7 +165,7 @@ class _PairingScreenState extends State<PairingScreen> {
                   letterSpacing: 2,
                 ),
               ),
-              const SizedBox(height: 64),
+              const SizedBox(height: 48),
 
               // Server URL
               Text(
@@ -170,7 +193,57 @@ class _PairingScreenState extends State<PairingScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
+
+              // Shared Passphrase (E2E encryption)
+              Text(
+                'SHARED SECRET',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: c.textMuted,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _passphraseController,
+                obscureText: !_passphraseVisible,
+                style: TextStyle(color: c.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'A secret only you two know',
+                  hintStyle: TextStyle(color: c.textMuted.withValues(alpha: 0.5)),
+                  filled: true,
+                  fillColor: c.inputBackground,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _passphraseVisible ? Icons.visibility_off : Icons.visibility,
+                      color: c.textMuted,
+                      size: 20,
+                    ),
+                    onPressed: () => setState(() => _passphraseVisible = !_passphraseVisible),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.lock_outline, size: 12, color: c.accent.withValues(alpha: 0.7)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'End-to-end encrypted. Both must use the same secret.',
+                      style: TextStyle(color: c.accent.withValues(alpha: 0.7), fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
 
               // Option 1: Generate code
               Text(
@@ -346,7 +419,7 @@ class _PairingScreenState extends State<PairingScreen> {
 
               const SizedBox(height: 48),
               Text(
-                'Share the room code with your partner.\nBoth of you connect with the same code.',
+                'Share the room code with your partner.\nBoth of you connect with the same code & secret.',
                 style: TextStyle(
                   color: c.textMuted,
                   fontSize: 12,

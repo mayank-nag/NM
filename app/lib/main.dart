@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'connection_service.dart';
 import 'pairing_screen.dart';
 import 'chat_screen.dart';
 import 'theme_provider.dart';
+import 'whiteboard_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(
     ChangeNotifierProvider(
       create: (_) => ThemeProvider(),
@@ -25,6 +28,7 @@ class NMApp extends StatefulWidget {
 
 class _NMAppState extends State<NMApp> {
   final _connectionService = ConnectionService();
+  final _navigatorKey = GlobalKey<NavigatorState>();
   bool _loading = true;
   bool _isPaired = false;
 
@@ -38,9 +42,13 @@ class _NMAppState extends State<NMApp> {
     super.initState();
     _checkPairing();
     _setupShareListeners();
+    _setupWidgetDeepLink();
   }
 
   Future<void> _checkPairing() async {
+    // Load saved encryption passphrase
+    await _connectionService.crypto.loadSaved();
+
     final savedRoom = await _connectionService.getSavedRoomId();
     if (savedRoom != null) {
       _isPaired = true;
@@ -66,6 +74,32 @@ class _NMAppState extends State<NMApp> {
     });
   }
 
+  /// Handle taps on the home screen widget → open whiteboard directly.
+  void _setupWidgetDeepLink() {
+    // Check if app was launched via widget tap
+    HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
+      if (uri != null) _handleWidgetUri(uri);
+    });
+
+    // Listen for widget taps while app is running
+    HomeWidget.widgetClicked.listen((uri) {
+      if (uri != null) _handleWidgetUri(uri);
+    });
+  }
+
+  void _handleWidgetUri(Uri uri) {
+    if (uri.host == 'whiteboard' && _isPaired) {
+      // Navigate to whiteboard — wait a frame for navigator to be ready
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => WhiteboardScreen(connectionService: _connectionService),
+          ),
+        );
+      });
+    }
+  }
+
   @override
   void dispose() {
     _sharedMediaSub?.cancel();
@@ -79,6 +113,7 @@ class _NMAppState extends State<NMApp> {
 
     return MaterialApp(
       title: 'NM',
+      navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: themeProvider.themeData,
       home: _loading

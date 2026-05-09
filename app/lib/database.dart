@@ -25,7 +25,17 @@ class Settings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-@DriftDatabase(tables: [Messages, Settings])
+/// Stores whiteboard strokes persistently so the canvas survives app restarts.
+class WhiteboardStrokes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get pointsJson => text()(); // JSON-encoded list of [dx, dy] pairs
+  TextColumn get color => text()(); // hex color string e.g. '#FF6B6B'
+  RealColumn get width => real()(); // stroke width
+  BoolColumn get isMe => boolean()(); // true = drawn by me, false = from partner
+  DateTimeColumn get timestamp => dateTime()();
+}
+
+@DriftDatabase(tables: [Messages, Settings, WhiteboardStrokes])
 class AppDatabase extends _$AppDatabase {
   AppDatabase._() : super(_openConnection());
 
@@ -33,7 +43,7 @@ class AppDatabase extends _$AppDatabase {
   static AppDatabase get instance => _instance ??= AppDatabase._();
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -49,6 +59,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.addColumn(messages, messages.shareUrl);
             await m.addColumn(messages, messages.shareTitle);
+          }
+          if (from < 5) {
+            await m.createTable(whiteboardStrokes);
           }
         },
       );
@@ -109,6 +122,41 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<String?> watchMyName() => watchSetting('my_name');
   Stream<String?> watchPartnerName() => watchSetting('partner_name');
+
+  // ── Whiteboard strokes ──
+
+  Future<int> insertStroke({
+    required String pointsJson,
+    required String color,
+    required double width,
+    required bool isMe,
+  }) {
+    return into(whiteboardStrokes).insert(
+      WhiteboardStrokesCompanion.insert(
+        pointsJson: pointsJson,
+        color: color,
+        width: width,
+        isMe: isMe,
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<List<WhiteboardStroke>> getAllStrokes() {
+    return (select(whiteboardStrokes)
+          ..orderBy([(s) => OrderingTerm.asc(s.timestamp)]))
+        .get();
+  }
+
+  Stream<List<WhiteboardStroke>> watchStrokes() {
+    return (select(whiteboardStrokes)
+          ..orderBy([(s) => OrderingTerm.asc(s.timestamp)]))
+        .watch();
+  }
+
+  Future<void> clearAllStrokes() {
+    return delete(whiteboardStrokes).go();
+  }
 }
 
 LazyDatabase _openConnection() {

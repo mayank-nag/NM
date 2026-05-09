@@ -711,16 +711,422 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   }
 }
 
+class $WhiteboardStrokesTable extends WhiteboardStrokes
+    with TableInfo<$WhiteboardStrokesTable, WhiteboardStroke> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $WhiteboardStrokesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _pointsJsonMeta = const VerificationMeta(
+    'pointsJson',
+  );
+  @override
+  late final GeneratedColumn<String> pointsJson = GeneratedColumn<String>(
+    'points_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _widthMeta = const VerificationMeta('width');
+  @override
+  late final GeneratedColumn<double> width = GeneratedColumn<double>(
+    'width',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isMeMeta = const VerificationMeta('isMe');
+  @override
+  late final GeneratedColumn<bool> isMe = GeneratedColumn<bool>(
+    'is_me',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_me" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _timestampMeta = const VerificationMeta(
+    'timestamp',
+  );
+  @override
+  late final GeneratedColumn<DateTime> timestamp = GeneratedColumn<DateTime>(
+    'timestamp',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    pointsJson,
+    color,
+    width,
+    isMe,
+    timestamp,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'whiteboard_strokes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<WhiteboardStroke> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('points_json')) {
+      context.handle(
+        _pointsJsonMeta,
+        pointsJson.isAcceptableOrUnknown(data['points_json']!, _pointsJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pointsJsonMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('width')) {
+      context.handle(
+        _widthMeta,
+        width.isAcceptableOrUnknown(data['width']!, _widthMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_widthMeta);
+    }
+    if (data.containsKey('is_me')) {
+      context.handle(
+        _isMeMeta,
+        isMe.isAcceptableOrUnknown(data['is_me']!, _isMeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_isMeMeta);
+    }
+    if (data.containsKey('timestamp')) {
+      context.handle(
+        _timestampMeta,
+        timestamp.isAcceptableOrUnknown(data['timestamp']!, _timestampMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_timestampMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  WhiteboardStroke map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return WhiteboardStroke(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      pointsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}points_json'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      )!,
+      width: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}width'],
+      )!,
+      isMe: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_me'],
+      )!,
+      timestamp: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}timestamp'],
+      )!,
+    );
+  }
+
+  @override
+  $WhiteboardStrokesTable createAlias(String alias) {
+    return $WhiteboardStrokesTable(attachedDatabase, alias);
+  }
+}
+
+class WhiteboardStroke extends DataClass
+    implements Insertable<WhiteboardStroke> {
+  final int id;
+  final String pointsJson;
+  final String color;
+  final double width;
+  final bool isMe;
+  final DateTime timestamp;
+  const WhiteboardStroke({
+    required this.id,
+    required this.pointsJson,
+    required this.color,
+    required this.width,
+    required this.isMe,
+    required this.timestamp,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['points_json'] = Variable<String>(pointsJson);
+    map['color'] = Variable<String>(color);
+    map['width'] = Variable<double>(width);
+    map['is_me'] = Variable<bool>(isMe);
+    map['timestamp'] = Variable<DateTime>(timestamp);
+    return map;
+  }
+
+  WhiteboardStrokesCompanion toCompanion(bool nullToAbsent) {
+    return WhiteboardStrokesCompanion(
+      id: Value(id),
+      pointsJson: Value(pointsJson),
+      color: Value(color),
+      width: Value(width),
+      isMe: Value(isMe),
+      timestamp: Value(timestamp),
+    );
+  }
+
+  factory WhiteboardStroke.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return WhiteboardStroke(
+      id: serializer.fromJson<int>(json['id']),
+      pointsJson: serializer.fromJson<String>(json['pointsJson']),
+      color: serializer.fromJson<String>(json['color']),
+      width: serializer.fromJson<double>(json['width']),
+      isMe: serializer.fromJson<bool>(json['isMe']),
+      timestamp: serializer.fromJson<DateTime>(json['timestamp']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'pointsJson': serializer.toJson<String>(pointsJson),
+      'color': serializer.toJson<String>(color),
+      'width': serializer.toJson<double>(width),
+      'isMe': serializer.toJson<bool>(isMe),
+      'timestamp': serializer.toJson<DateTime>(timestamp),
+    };
+  }
+
+  WhiteboardStroke copyWith({
+    int? id,
+    String? pointsJson,
+    String? color,
+    double? width,
+    bool? isMe,
+    DateTime? timestamp,
+  }) => WhiteboardStroke(
+    id: id ?? this.id,
+    pointsJson: pointsJson ?? this.pointsJson,
+    color: color ?? this.color,
+    width: width ?? this.width,
+    isMe: isMe ?? this.isMe,
+    timestamp: timestamp ?? this.timestamp,
+  );
+  WhiteboardStroke copyWithCompanion(WhiteboardStrokesCompanion data) {
+    return WhiteboardStroke(
+      id: data.id.present ? data.id.value : this.id,
+      pointsJson: data.pointsJson.present
+          ? data.pointsJson.value
+          : this.pointsJson,
+      color: data.color.present ? data.color.value : this.color,
+      width: data.width.present ? data.width.value : this.width,
+      isMe: data.isMe.present ? data.isMe.value : this.isMe,
+      timestamp: data.timestamp.present ? data.timestamp.value : this.timestamp,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WhiteboardStroke(')
+          ..write('id: $id, ')
+          ..write('pointsJson: $pointsJson, ')
+          ..write('color: $color, ')
+          ..write('width: $width, ')
+          ..write('isMe: $isMe, ')
+          ..write('timestamp: $timestamp')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, pointsJson, color, width, isMe, timestamp);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is WhiteboardStroke &&
+          other.id == this.id &&
+          other.pointsJson == this.pointsJson &&
+          other.color == this.color &&
+          other.width == this.width &&
+          other.isMe == this.isMe &&
+          other.timestamp == this.timestamp);
+}
+
+class WhiteboardStrokesCompanion extends UpdateCompanion<WhiteboardStroke> {
+  final Value<int> id;
+  final Value<String> pointsJson;
+  final Value<String> color;
+  final Value<double> width;
+  final Value<bool> isMe;
+  final Value<DateTime> timestamp;
+  const WhiteboardStrokesCompanion({
+    this.id = const Value.absent(),
+    this.pointsJson = const Value.absent(),
+    this.color = const Value.absent(),
+    this.width = const Value.absent(),
+    this.isMe = const Value.absent(),
+    this.timestamp = const Value.absent(),
+  });
+  WhiteboardStrokesCompanion.insert({
+    this.id = const Value.absent(),
+    required String pointsJson,
+    required String color,
+    required double width,
+    required bool isMe,
+    required DateTime timestamp,
+  }) : pointsJson = Value(pointsJson),
+       color = Value(color),
+       width = Value(width),
+       isMe = Value(isMe),
+       timestamp = Value(timestamp);
+  static Insertable<WhiteboardStroke> custom({
+    Expression<int>? id,
+    Expression<String>? pointsJson,
+    Expression<String>? color,
+    Expression<double>? width,
+    Expression<bool>? isMe,
+    Expression<DateTime>? timestamp,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (pointsJson != null) 'points_json': pointsJson,
+      if (color != null) 'color': color,
+      if (width != null) 'width': width,
+      if (isMe != null) 'is_me': isMe,
+      if (timestamp != null) 'timestamp': timestamp,
+    });
+  }
+
+  WhiteboardStrokesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? pointsJson,
+    Value<String>? color,
+    Value<double>? width,
+    Value<bool>? isMe,
+    Value<DateTime>? timestamp,
+  }) {
+    return WhiteboardStrokesCompanion(
+      id: id ?? this.id,
+      pointsJson: pointsJson ?? this.pointsJson,
+      color: color ?? this.color,
+      width: width ?? this.width,
+      isMe: isMe ?? this.isMe,
+      timestamp: timestamp ?? this.timestamp,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (pointsJson.present) {
+      map['points_json'] = Variable<String>(pointsJson.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (width.present) {
+      map['width'] = Variable<double>(width.value);
+    }
+    if (isMe.present) {
+      map['is_me'] = Variable<bool>(isMe.value);
+    }
+    if (timestamp.present) {
+      map['timestamp'] = Variable<DateTime>(timestamp.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WhiteboardStrokesCompanion(')
+          ..write('id: $id, ')
+          ..write('pointsJson: $pointsJson, ')
+          ..write('color: $color, ')
+          ..write('width: $width, ')
+          ..write('isMe: $isMe, ')
+          ..write('timestamp: $timestamp')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $MessagesTable messages = $MessagesTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $WhiteboardStrokesTable whiteboardStrokes =
+      $WhiteboardStrokesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [messages, settings];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    messages,
+    settings,
+    whiteboardStrokes,
+  ];
 }
 
 typedef $$MessagesTableCreateCompanionBuilder =
@@ -1103,6 +1509,234 @@ typedef $$SettingsTableProcessedTableManager =
       Setting,
       PrefetchHooks Function()
     >;
+typedef $$WhiteboardStrokesTableCreateCompanionBuilder =
+    WhiteboardStrokesCompanion Function({
+      Value<int> id,
+      required String pointsJson,
+      required String color,
+      required double width,
+      required bool isMe,
+      required DateTime timestamp,
+    });
+typedef $$WhiteboardStrokesTableUpdateCompanionBuilder =
+    WhiteboardStrokesCompanion Function({
+      Value<int> id,
+      Value<String> pointsJson,
+      Value<String> color,
+      Value<double> width,
+      Value<bool> isMe,
+      Value<DateTime> timestamp,
+    });
+
+class $$WhiteboardStrokesTableFilterComposer
+    extends Composer<_$AppDatabase, $WhiteboardStrokesTable> {
+  $$WhiteboardStrokesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pointsJson => $composableBuilder(
+    column: $table.pointsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isMe => $composableBuilder(
+    column: $table.isMe,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get timestamp => $composableBuilder(
+    column: $table.timestamp,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$WhiteboardStrokesTableOrderingComposer
+    extends Composer<_$AppDatabase, $WhiteboardStrokesTable> {
+  $$WhiteboardStrokesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pointsJson => $composableBuilder(
+    column: $table.pointsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isMe => $composableBuilder(
+    column: $table.isMe,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get timestamp => $composableBuilder(
+    column: $table.timestamp,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$WhiteboardStrokesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $WhiteboardStrokesTable> {
+  $$WhiteboardStrokesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get pointsJson => $composableBuilder(
+    column: $table.pointsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<double> get width =>
+      $composableBuilder(column: $table.width, builder: (column) => column);
+
+  GeneratedColumn<bool> get isMe =>
+      $composableBuilder(column: $table.isMe, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get timestamp =>
+      $composableBuilder(column: $table.timestamp, builder: (column) => column);
+}
+
+class $$WhiteboardStrokesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $WhiteboardStrokesTable,
+          WhiteboardStroke,
+          $$WhiteboardStrokesTableFilterComposer,
+          $$WhiteboardStrokesTableOrderingComposer,
+          $$WhiteboardStrokesTableAnnotationComposer,
+          $$WhiteboardStrokesTableCreateCompanionBuilder,
+          $$WhiteboardStrokesTableUpdateCompanionBuilder,
+          (
+            WhiteboardStroke,
+            BaseReferences<
+              _$AppDatabase,
+              $WhiteboardStrokesTable,
+              WhiteboardStroke
+            >,
+          ),
+          WhiteboardStroke,
+          PrefetchHooks Function()
+        > {
+  $$WhiteboardStrokesTableTableManager(
+    _$AppDatabase db,
+    $WhiteboardStrokesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$WhiteboardStrokesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$WhiteboardStrokesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$WhiteboardStrokesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> pointsJson = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<double> width = const Value.absent(),
+                Value<bool> isMe = const Value.absent(),
+                Value<DateTime> timestamp = const Value.absent(),
+              }) => WhiteboardStrokesCompanion(
+                id: id,
+                pointsJson: pointsJson,
+                color: color,
+                width: width,
+                isMe: isMe,
+                timestamp: timestamp,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String pointsJson,
+                required String color,
+                required double width,
+                required bool isMe,
+                required DateTime timestamp,
+              }) => WhiteboardStrokesCompanion.insert(
+                id: id,
+                pointsJson: pointsJson,
+                color: color,
+                width: width,
+                isMe: isMe,
+                timestamp: timestamp,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$WhiteboardStrokesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $WhiteboardStrokesTable,
+      WhiteboardStroke,
+      $$WhiteboardStrokesTableFilterComposer,
+      $$WhiteboardStrokesTableOrderingComposer,
+      $$WhiteboardStrokesTableAnnotationComposer,
+      $$WhiteboardStrokesTableCreateCompanionBuilder,
+      $$WhiteboardStrokesTableUpdateCompanionBuilder,
+      (
+        WhiteboardStroke,
+        BaseReferences<
+          _$AppDatabase,
+          $WhiteboardStrokesTable,
+          WhiteboardStroke
+        >,
+      ),
+      WhiteboardStroke,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1111,4 +1745,6 @@ class $AppDatabaseManager {
       $$MessagesTableTableManager(_db, _db.messages);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$WhiteboardStrokesTableTableManager get whiteboardStrokes =>
+      $$WhiteboardStrokesTableTableManager(_db, _db.whiteboardStrokes);
 }

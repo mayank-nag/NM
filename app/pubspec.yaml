@@ -43,6 +43,8 @@ dependencies:
   provider: ^6.1.5+1
   image_picker: ^1.2.2
   receive_sharing_intent: ^1.8.1
+  cryptography: ^2.7.0
+  home_widget: ^0.7.0
 
 dev_dependencies:
   flutter_test:

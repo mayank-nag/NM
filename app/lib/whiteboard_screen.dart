@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 import 'connection_service.dart';
+import 'database.dart';
 import 'theme_provider.dart';
 
 class WhiteboardScreen extends StatefulWidget {
@@ -10,15 +14,17 @@ class WhiteboardScreen extends StatefulWidget {
   const WhiteboardScreen({super.key, required this.connectionService});
 
   @override
-  State<WhiteboardScreen> createState() => _WhiteboardScreenState();
+  State<WhiteboardScreen> createState() => WhiteboardScreenState();
 }
 
-class _WhiteboardScreenState extends State<WhiteboardScreen> {
-  final List<_Stroke> _strokes = [];
-  _Stroke? _currentStroke;
+class WhiteboardScreenState extends State<WhiteboardScreen> {
+  final List<StrokeData> _strokes = [];
+  StrokeData? _currentStroke;
   Color _selectedColor = Colors.white;
   double _strokeWidth = 3.0;
   StreamSubscription? _msgSub;
+  final _db = AppDatabase.instance;
+  final GlobalKey _canvasKey = GlobalKey();
 
   static const List<Color> _palette = [
     Colors.white,
@@ -36,7 +42,37 @@ class _WhiteboardScreenState extends State<WhiteboardScreen> {
   @override
   void initState() {
     super.initState();
+    _loadStrokes();
     _msgSub = widget.connectionService.messages.listen(_handleMessage);
+  }
+
+  /// Load saved strokes from local DB on startup.
+  Future<void> _loadStrokes() async {
+    final saved = await _db.getAllStrokes();
+    if (mounted) {
+      setState(() {
+        _strokes.addAll(saved.map((s) => StrokeData(
+              points: _decodePoints(s.pointsJson),
+              color: _hexToColor(s.color),
+              width: s.width,
+            )));
+      });
+    }
+  }
+
+  List<Offset> _decodePoints(String json) {
+    final list = jsonDecode(json) as List;
+    return list
+        .map((p) => Offset((p[0] as num).toDouble(), (p[1] as num).toDouble()))
+        .toList();
+  }
+
+  Color _hexToColor(String hex) {
+    return Color(int.parse(hex.replaceFirst('#', '0xFF')));
+  }
+
+  String _colorToHex(Color c) {
+    return '#${c.toARGB32().toRadixString(16).substring(2)}';
   }
 
   void _handleMessage(Map<String, dynamic> msg) {
@@ -44,24 +80,36 @@ class _WhiteboardScreenState extends State<WhiteboardScreen> {
       final points = (msg['points'] as List)
           .map((p) => Offset((p[0] as num).toDouble(), (p[1] as num).toDouble()))
           .toList();
-      final color = Color(int.parse((msg['color'] as String).replaceFirst('#', '0xFF')));
+      final color = _hexToColor(msg['color'] as String);
       final width = (msg['width'] as num).toDouble();
 
       if (mounted) {
         setState(() {
-          _strokes.add(_Stroke(points: points, color: color, width: width));
+          _strokes.add(StrokeData(points: points, color: color, width: width));
         });
+
+        // Persist received stroke
+        _db.insertStroke(
+          pointsJson: jsonEncode(msg['points']),
+          color: msg['color'] as String,
+          width: width,
+          isMe: false,
+        );
+
+        _updateHomeWidget();
       }
     } else if (msg['type'] == 'whiteboard_clear') {
       if (mounted) {
         setState(() => _strokes.clear());
+        _db.clearAllStrokes();
+        _updateHomeWidget();
       }
     }
   }
 
   void _onPanStart(DragStartDetails details) {
     setState(() {
-      _currentStroke = _Stroke(
+      _currentStroke = StrokeData(
         points: [details.localPosition],
         color: _selectedColor,
         width: _strokeWidth,
@@ -85,24 +133,85 @@ class _WhiteboardScreenState extends State<WhiteboardScreen> {
       _currentStroke = null;
     });
 
+    final colorHex = _colorToHex(stroke.color);
+    final pointsList = stroke.points.map((p) => [p.dx, p.dy]).toList();
+
     // Send stroke to partner
     widget.connectionService.send({
       'type': 'whiteboard_stroke',
-      'points': stroke.points.map((p) => [p.dx, p.dy]).toList(),
-      'color': '#${stroke.color.toARGB32().toRadixString(16).substring(2)}',
+      'points': pointsList,
+      'color': colorHex,
       'width': stroke.width,
     });
+
+    // Persist locally
+    _db.insertStroke(
+      pointsJson: jsonEncode(pointsList),
+      color: colorHex,
+      width: stroke.width,
+      isMe: true,
+    );
+
+    _updateHomeWidget();
   }
 
   void _clearCanvas() {
     setState(() => _strokes.clear());
     widget.connectionService.send({'type': 'whiteboard_clear'});
+    _db.clearAllStrokes();
+    _updateHomeWidget();
   }
 
   void _undo() {
     if (_strokes.isNotEmpty) {
       setState(() => _strokes.removeLast());
       // Note: undo is local only — partner still sees the stroke
+    }
+  }
+
+  /// Capture the current canvas as an image and update the home screen widget.
+  Future<void> _updateHomeWidget() async {
+    try {
+      // Render the whiteboard to an image
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      const size = Size(400, 300);
+
+      // Dark background
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        Paint()..color = const Color(0xFF111111),
+      );
+
+      // Draw all strokes
+      final painter = WhiteboardPainter(strokes: _strokes);
+      painter.paint(canvas, size);
+
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(400, 300);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData != null) {
+        await HomeWidget.saveWidgetData('whiteboard_updated', DateTime.now().millisecondsSinceEpoch);
+        await HomeWidget.renderFlutterWidget(
+          Container(
+            width: 400,
+            height: 300,
+            color: const Color(0xFF111111),
+            child: CustomPaint(
+              painter: WhiteboardPainter(strokes: _strokes),
+              size: const Size(400, 300),
+            ),
+          ),
+          key: 'whiteboard_image',
+          logicalSize: const Size(400, 300),
+        );
+        await HomeWidget.updateWidget(
+          androidName: 'WhiteboardWidgetProvider',
+        );
+      }
+    } catch (_) {
+      // Widget update is best-effort
     }
   }
 
@@ -156,13 +265,14 @@ class _WhiteboardScreenState extends State<WhiteboardScreen> {
           // Canvas
           Expanded(
             child: Container(
+              key: _canvasKey,
               color: const Color(0xFF111111),
               child: GestureDetector(
                 onPanStart: _onPanStart,
                 onPanUpdate: _onPanUpdate,
                 onPanEnd: _onPanEnd,
                 child: CustomPaint(
-                  painter: _WhiteboardPainter(
+                  painter: WhiteboardPainter(
                     strokes: _strokes,
                     currentStroke: _currentStroke,
                   ),
@@ -261,19 +371,22 @@ class _WhiteboardScreenState extends State<WhiteboardScreen> {
   }
 }
 
-class _Stroke {
+/// Data model for a single drawing stroke.
+class StrokeData {
   final List<Offset> points;
   final Color color;
   final double width;
 
-  _Stroke({required this.points, required this.color, required this.width});
+  StrokeData({required this.points, required this.color, required this.width});
 }
 
-class _WhiteboardPainter extends CustomPainter {
-  final List<_Stroke> strokes;
-  final _Stroke? currentStroke;
+/// Custom painter that renders all whiteboard strokes.
+/// Made public so it can be reused by the home widget renderer.
+class WhiteboardPainter extends CustomPainter {
+  final List<StrokeData> strokes;
+  final StrokeData? currentStroke;
 
-  _WhiteboardPainter({required this.strokes, this.currentStroke});
+  WhiteboardPainter({required this.strokes, this.currentStroke});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -285,7 +398,7 @@ class _WhiteboardPainter extends CustomPainter {
     }
   }
 
-  void _drawStroke(Canvas canvas, _Stroke stroke) {
+  void _drawStroke(Canvas canvas, StrokeData stroke) {
     if (stroke.points.length < 2) {
       // Single point — draw a dot
       final paint = Paint()
@@ -318,5 +431,5 @@ class _WhiteboardPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WhiteboardPainter oldDelegate) => true;
+  bool shouldRepaint(covariant WhiteboardPainter oldDelegate) => true;
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'crypto_service.dart';
 
 class ConnectionService {
   static const _roomKey = 'room_id';
@@ -13,6 +14,9 @@ class ConnectionService {
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   final _statusController = StreamController<ConnectionStatus>.broadcast();
   bool _disposed = false;
+
+  /// E2E encryption service — all messages encrypted before sending.
+  final CryptoService crypto = CryptoService();
 
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
   Stream<ConnectionStatus> get status => _statusController.stream;
@@ -90,18 +94,7 @@ class ConnectionService {
 
       _channel!.stream.listen(
         (data) {
-          try {
-            final msg = jsonDecode(data as String) as Map<String, dynamic>;
-            if (msg['type'] == 'partner_connected') {
-              _updateStatus(ConnectionStatus.partnerOnline);
-            } else if (msg['type'] == 'partner_disconnected') {
-              _updateStatus(ConnectionStatus.connected);
-            } else if (msg['type'] == 'pong') {
-              // Keep-alive response, ignore
-            } else {
-              _messageController.add(msg);
-            }
-          } catch (_) {}
+          _handleRawMessage(data as String);
         },
         onError: (error) {
           _pingTimer?.cancel();
@@ -121,7 +114,44 @@ class ConnectionService {
     }
   }
 
-  /// Send periodic pings to keep the WebSocket alive
+  /// Handle raw incoming WebSocket data — decrypt if encryption is active.
+  Future<void> _handleRawMessage(String data) async {
+    try {
+      // First try parsing as plain JSON (for system messages like partner_connected)
+      Map<String, dynamic>? msg;
+      try {
+        msg = jsonDecode(data) as Map<String, dynamic>;
+      } catch (_) {
+        // Not valid JSON — might be encrypted
+        msg = null;
+      }
+
+      if (msg != null) {
+        // Plain JSON message — check if it's a system message or encrypted envelope
+        if (msg['type'] == 'partner_connected') {
+          _updateStatus(ConnectionStatus.partnerOnline);
+          return;
+        } else if (msg['type'] == 'partner_disconnected') {
+          _updateStatus(ConnectionStatus.connected);
+          return;
+        } else if (msg['type'] == 'pong') {
+          return;
+        } else if (msg['type'] == 'encrypted' && crypto.isConfigured) {
+          // Encrypted envelope — decrypt the payload
+          final decrypted = await crypto.decrypt(msg['data'] as String);
+          if (decrypted != null) {
+            _messageController.add(decrypted);
+          }
+          return;
+        }
+
+        // Unencrypted message (legacy or encryption not configured)
+        _messageController.add(msg);
+      }
+    } catch (_) {}
+  }
+
+  /// Send keep-alive pings (unencrypted — server needs to handle these).
   void _startPingTimer() {
     _pingTimer?.cancel();
     _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
@@ -133,8 +163,22 @@ class ConnectionService {
     });
   }
 
-  void send(Map<String, dynamic> message) {
-    if (_channel != null) {
+  /// Send a message — encrypts if encryption is configured.
+  Future<void> send(Map<String, dynamic> message) async {
+    if (_channel == null) return;
+
+    if (crypto.isConfigured) {
+      try {
+        final encrypted = await crypto.encrypt(message);
+        _channel!.sink.add(jsonEncode({
+          'type': 'encrypted',
+          'data': encrypted,
+        }));
+      } catch (_) {
+        // Fallback to unencrypted if encryption fails
+        _channel!.sink.add(jsonEncode(message));
+      }
+    } else {
       _channel!.sink.add(jsonEncode(message));
     }
   }
@@ -143,6 +187,7 @@ class ConnectionService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_roomKey);
     _roomId = null;
+    await crypto.clear();
     disconnect();
   }
 
