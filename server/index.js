@@ -93,10 +93,14 @@ wss.on("connection", (ws, req) => {
 
   console.log(`[+] Client joined room "${roomId}" (${room.size}/${MAX_CLIENTS_PER_ROOM}) from ${ip}`);
 
-  // Notify the other client that their partner connected
-  for (const client of room) {
-    if (client !== ws && client.readyState === 1) {
-      client.send(JSON.stringify({ type: "partner_connected" }));
+  // When both partners are in the room, notify ALL clients
+  // (Previously only notified existing clients, so the joiner never knew
+  //  their partner was already present → stuck on "Waiting for partner")
+  if (room.size === MAX_CLIENTS_PER_ROOM) {
+    for (const client of room) {
+      if (client.readyState === 1) {
+        client.send(JSON.stringify({ type: "partner_connected" }));
+      }
     }
   }
 
