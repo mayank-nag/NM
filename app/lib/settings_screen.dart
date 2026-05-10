@@ -22,6 +22,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ConnectionStatus _status = ConnectionStatus.disconnected;
   StreamSubscription? _statusSub;
   bool _loading = true;
+  String _currentStatusPreset = '';
+
+  static const List<Map<String, dynamic>> _statusPresets = [
+    {'label': 'Online', 'value': '', 'icon': Icons.circle, 'color': 0xFF6BCB77},
+    {'label': 'Busy Studying', 'value': 'Busy Studying 📚', 'icon': Icons.menu_book, 'color': 0xFFFFD93D},
+    {'label': 'At Work', 'value': 'At Work 💼', 'icon': Icons.work_outline, 'color': 0xFF4D96FF},
+    {'label': 'Out of Net', 'value': 'Out of Net 📵', 'icon': Icons.signal_wifi_off, 'color': 0xFFFF6B6B},
+    {'label': 'Sleeping', 'value': 'Sleeping 😴', 'icon': Icons.bedtime, 'color': 0xFF9B59B6},
+    {'label': 'Do Not Disturb', 'value': 'Do Not Disturb 🔇', 'icon': Icons.do_not_disturb, 'color': 0xFFE04040},
+    {'label': 'At Gym', 'value': 'At Gym 💪', 'icon': Icons.fitness_center, 'color': 0xFFFF8C42},
+    {'label': 'Chilling', 'value': 'Chilling 😎', 'icon': Icons.weekend, 'color': 0xFF6BCB77},
+  ];
 
   @override
   void initState() {
@@ -31,6 +43,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) setState(() => _status = s);
     });
     _loadNames();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    final saved = await _db.getSetting('my_custom_status') ?? '';
+    if (mounted) setState(() => _currentStatusPreset = saved);
+  }
+
+  Future<void> _setStatus(String value) async {
+    setState(() => _currentStatusPreset = value);
+    await _db.setSetting('my_custom_status', value);
+    widget.connectionService.send({'type': 'status_update', 'status': value});
   }
 
   Future<void> _loadNames() async {
@@ -222,6 +246,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: Icons.favorite_outline,
                     c: c,
                   ),
+                ]),
+
+                // ── Status ──
+                _buildSectionHeader('YOUR STATUS', c),
+                _buildCard(c, children: [
+                  ..._statusPresets.map((preset) {
+                    final isSelected = _currentStatusPreset == preset['value'];
+                    final iconColor = Color(preset['color'] as int);
+                    return InkWell(
+                      onTap: () => _setStatus(preset['value'] as String),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                        child: Row(children: [
+                          Icon(preset['icon'] as IconData, size: 20, color: iconColor),
+                          const SizedBox(width: 14),
+                          Expanded(child: Text(
+                            preset['label'] as String,
+                            style: TextStyle(
+                              color: c.textPrimary,
+                              fontSize: 14,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                            ),
+                          )),
+                          if (isSelected)
+                            Icon(Icons.check_circle, color: c.accent, size: 20),
+                        ]),
+                      ),
+                    );
+                  }),
                 ]),
 
                 // ── Theme ──

@@ -9,7 +9,9 @@ import 'package:provider/provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'connection_service.dart';
 import 'database.dart';
+import 'package:flutter/services.dart';
 import 'photo_viewer.dart';
+import 'reel_viewer.dart';
 import 'settings_screen.dart';
 import 'theme_provider.dart';
 import 'whiteboard_screen.dart';
@@ -38,7 +40,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   ConnectionStatus _status = ConnectionStatus.disconnected;
   List<Message> _messages = [];
+  Message? _replyingTo;
   String? _partnerName;
+  String? _partnerStatus; // e.g. 'Busy Studying', 'Out of Net'
+  DateTime? _partnerLastOnline;
   StreamSubscription? _msgSub;
   StreamSubscription? _statusSub;
   StreamSubscription? _dbSub;
@@ -64,6 +69,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() => _partnerName = name);
       }
     });
+
+    // Load partner status
+    _db.getSetting('partner_custom_status').then((s) {
+      if (s != null && mounted) setState(() => _partnerStatus = s);
+    });
+    _db.getSetting('partner_last_online').then((s) {
+      if (s != null && mounted) {
+        setState(() => _partnerLastOnline = DateTime.tryParse(s));
+      }
+    });
+
+    // Broadcast our status on connect
+    _sendMyStatus();
 
     _dbSub = _db.watchMessages().listen((msgs) {
       if (mounted) {
@@ -161,10 +179,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _handleIncomingMessage(Map<String, dynamic> msg) async {
     if (msg['type'] == 'text') {
+      // Flip replyToIsMe since partner's "me" is our "them"
+      final rIsMe = msg['replyToIsMe'] as bool?;
       _db.insertMessage(
         msg['content'] as String,
         false,
         DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
+        replyToContent: msg['replyToContent'] as String?,
+        replyToIsMe: rIsMe != null ? !rIsMe : null,
       );
     } else if (msg['type'] == 'photo') {
       final photoData = msg['data'] as String?;
@@ -196,10 +218,38 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
     } else if (msg['type'] == 'nickname_update') {
       final partnerSelfName = msg['self'] as String?;
+      final partnerNameForUs = msg['other'] as String?;
       if (partnerSelfName != null && partnerSelfName.isNotEmpty) {
         _db.setSetting('partner_self_name', partnerSelfName);
+        // Update display name if user hasn't set a custom one
+        final custom = await _db.getPartnerName();
+        if (custom == null || custom.isEmpty) {
+          await _db.setPartnerName(partnerSelfName);
+        }
+      }
+      if (partnerNameForUs != null && partnerNameForUs.isNotEmpty) {
+        _db.setSetting('given_name_by_partner', partnerNameForUs);
+      }
+    } else if (msg['type'] == 'status_update') {
+      final status = msg['status'] as String?;
+      if (status != null && mounted) {
+        setState(() => _partnerStatus = status.isEmpty ? null : status);
+        _db.setSetting('partner_custom_status', status);
+      }
+    } else if (msg['type'] == 'partner_connected') {
+      if (mounted) setState(() => _partnerLastOnline = null);
+      _sendMyStatus();
+    } else if (msg['type'] == 'partner_disconnected') {
+      if (mounted) {
+        setState(() => _partnerLastOnline = DateTime.now());
+        _db.setSetting('partner_last_online', DateTime.now().toIso8601String());
       }
     }
+  }
+
+  void _sendMyStatus() async {
+    final status = await _db.getSetting('my_custom_status') ?? '';
+    widget.connectionService.send({'type': 'status_update', 'status': status});
   }
 
   void _scrollToBottom() {
@@ -219,13 +269,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (text.isEmpty) return;
 
     final now = DateTime.now();
-    _db.insertMessage(text, true, now);
-    widget.connectionService.send({
+    final replyContent = _replyingTo?.content;
+    final replyIsMe = _replyingTo?.isMe;
+
+    _db.insertMessage(text, true, now,
+      replyToContent: replyContent,
+      replyToIsMe: replyIsMe,
+    );
+
+    final payload = <String, dynamic>{
       'type': 'text',
       'content': text,
       'timestamp': now.millisecondsSinceEpoch,
-    });
+    };
+    if (replyContent != null) {
+      payload['replyToContent'] = replyContent;
+      payload['replyToIsMe'] = replyIsMe;
+    }
+    widget.connectionService.send(payload);
     _textController.clear();
+    setState(() => _replyingTo = null);
+  }
+
+  void _startReply(Message msg) {
+    setState(() => _replyingTo = msg);
   }
 
   Future<void> _pickAndSendPhoto(ImageSource source) async {
@@ -330,6 +397,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return prev.year != curr.year || prev.month != curr.month || prev.day != curr.day;
   }
 
+  String _buildSubtitle() {
+    if (_status == ConnectionStatus.partnerOnline) {
+      if (_partnerStatus != null && _partnerStatus!.isNotEmpty) {
+        return _partnerStatus!;
+      }
+      return 'Online';
+    }
+    if (_partnerLastOnline != null) {
+      return 'Last seen ${_formatLastSeen(_partnerLastOnline!)}';
+    }
+    if (_partnerStatus != null && _partnerStatus!.isNotEmpty) {
+      return _partnerStatus!;
+    }
+    return 'Offline';
+  }
+
+  String _formatLastSeen(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'yesterday';
+    return '${dt.day}/${dt.month}';
+  }
+
   Widget _buildStatusBar(AppColors c) {
     final Color color;
     final String text;
@@ -371,9 +464,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             shape: BoxShape.circle,
           )),
           const SizedBox(width: 10),
-          Text(_partnerName ?? 'NM', style: TextStyle(
-            color: c.textPrimary, fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: 1.5,
-          )),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_partnerName ?? 'NM', style: TextStyle(
+              color: c.textPrimary, fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: 1.5,
+            )),
+            Text(_buildSubtitle(), style: TextStyle(
+              color: c.textMuted, fontSize: 11, fontWeight: FontWeight.w400,
+            )),
+          ])),
         ]),
         actions: [
           IconButton(
@@ -411,22 +509,48 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     final msg = _messages[index];
                     final showDate = _shouldShowDateHeader(index);
                     final isLastInGroup = index == _messages.length - 1 || _messages[index + 1].isMe != msg.isMe;
+                    final Widget bubble;
+                    if (msg.type == 'photo') {
+                      bubble = _PhotoBubble(mediaPath: msg.mediaPath, isMe: msg.isMe, time: _formatTime(msg.timestamp), showTail: isLastInGroup, colors: c, replyToContent: msg.replyToContent, replyToIsMe: msg.replyToIsMe);
+                    } else if (msg.type == 'share') {
+                      bubble = _ShareBubble(url: msg.shareUrl, title: msg.shareTitle, content: msg.content, isMe: msg.isMe, time: _formatTime(msg.timestamp), showTail: isLastInGroup, colors: c);
+                    } else {
+                      bubble = _MessageBubble(content: msg.content, isMe: msg.isMe, time: _formatTime(msg.timestamp), showTail: isLastInGroup, colors: c, replyToContent: msg.replyToContent, replyToIsMe: msg.replyToIsMe, partnerName: _partnerName);
+                    }
                     return Column(children: [
                       if (showDate)
                         Padding(padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(_formatDateHeader(msg.timestamp),
                             style: TextStyle(color: c.textMuted, fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5))),
-                      if (msg.type == 'photo')
-                        _PhotoBubble(mediaPath: msg.mediaPath, isMe: msg.isMe, time: _formatTime(msg.timestamp), showTail: isLastInGroup, colors: c)
-                      else if (msg.type == 'share')
-                        _ShareBubble(url: msg.shareUrl, title: msg.shareTitle, content: msg.content, isMe: msg.isMe, time: _formatTime(msg.timestamp), showTail: isLastInGroup, colors: c)
-                      else
-                        _MessageBubble(content: msg.content, isMe: msg.isMe, time: _formatTime(msg.timestamp), showTail: isLastInGroup, colors: c),
+                      _SwipeToReply(onReply: () => _startReply(msg), child: bubble),
                     ]);
                   },
                 ),
         ),
+        _buildReplyPreview(c),
         _buildInputBar(c),
+      ]),
+    );
+  }
+
+  Widget _buildReplyPreview(AppColors c) {
+    if (_replyingTo == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: c.surface, border: Border(top: BorderSide(color: c.divider, width: 0.5))),
+      child: Row(children: [
+        Container(width: 3, height: 36, decoration: BoxDecoration(color: c.accent, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 8),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_replyingTo!.isMe ? 'You' : (_partnerName ?? 'Partner'),
+            style: TextStyle(color: c.accent, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(_replyingTo!.type == 'photo' ? '📷 Photo' : _replyingTo!.content,
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: c.textMuted, fontSize: 13)),
+        ])),
+        IconButton(icon: Icon(Icons.close, size: 18, color: c.textMuted),
+          onPressed: () => setState(() => _replyingTo = null),
+          padding: EdgeInsets.zero, constraints: const BoxConstraints()),
       ]),
     );
   }
@@ -475,8 +599,11 @@ class _MessageBubble extends StatelessWidget {
   final String time;
   final bool showTail;
   final AppColors colors;
+  final String? replyToContent;
+  final bool? replyToIsMe;
+  final String? partnerName;
 
-  const _MessageBubble({required this.content, required this.isMe, required this.time, required this.showTail, required this.colors});
+  const _MessageBubble({required this.content, required this.isMe, required this.time, required this.showTail, required this.colors, this.replyToContent, this.replyToIsMe, this.partnerName});
 
   @override
   Widget build(BuildContext context) {
@@ -494,10 +621,14 @@ class _MessageBubble extends StatelessWidget {
               bottomRight: Radius.circular(!isMe || !showTail ? 18 : 4),
             ),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(content, style: TextStyle(color: isMe ? colors.meText : colors.themText, fontSize: 15, height: 1.35)),
-            const SizedBox(height: 3),
-            Text(time, style: TextStyle(color: (isMe ? colors.meText : colors.themText).withValues(alpha: 0.45), fontSize: 10)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (replyToContent != null && replyToContent!.isNotEmpty)
+              _ReplyQuote(text: replyToContent!, isMe: isMe, wasFromMe: replyToIsMe ?? false, colors: colors, partnerName: partnerName),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(content, style: TextStyle(color: isMe ? colors.meText : colors.themText, fontSize: 15, height: 1.35)),
+              const SizedBox(height: 3),
+              Text(time, style: TextStyle(color: (isMe ? colors.meText : colors.themText).withValues(alpha: 0.45), fontSize: 10)),
+            ]),
           ]),
         ),
       ),
@@ -512,8 +643,10 @@ class _PhotoBubble extends StatelessWidget {
   final String time;
   final bool showTail;
   final AppColors colors;
+  final String? replyToContent;
+  final bool? replyToIsMe;
 
-  const _PhotoBubble({required this.mediaPath, required this.isMe, required this.time, required this.showTail, required this.colors});
+  const _PhotoBubble({required this.mediaPath, required this.isMe, required this.time, required this.showTail, required this.colors, this.replyToContent, this.replyToIsMe});
 
   @override
   Widget build(BuildContext context) {
@@ -583,6 +716,12 @@ class _ShareBubble extends StatelessWidget {
     }
   }
 
+  bool get _isInstagramReel {
+    if (url == null) return false;
+    final u = url!.toLowerCase();
+    return u.contains('instagram.com/reel') || u.contains('instagram.com/reels');
+  }
+
   IconData get _domainIcon {
     final domain = _displayDomain.toLowerCase();
     if (domain.contains('youtube') || domain.contains('youtu.be')) return Icons.play_circle_fill;
@@ -596,6 +735,7 @@ class _ShareBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isReel = _isInstagramReel;
     return Padding(
       padding: EdgeInsets.only(top: 2, bottom: showTail ? 8 : 2, left: isMe ? 48 : 0, right: isMe ? 0 : 48),
       child: Align(
@@ -639,6 +779,31 @@ class _ShareBubble extends StatelessWidget {
                 ])),
               ]),
             ),
+            // Play button for Instagram reels
+            if (isReel)
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => ReelViewer(url: url!, title: 'Instagram Reel'),
+                  ));
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                      const Color(0xFFF58529), const Color(0xFFDD2A7B), const Color(0xFF8134AF),
+                    ]),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.play_circle_fill, color: Colors.white, size: 20),
+                    SizedBox(width: 6),
+                    Text('Play Reel', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ),
             // URL text + time
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
@@ -653,6 +818,109 @@ class _ShareBubble extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+// ── Swipe-right to reply gesture ──
+class _SwipeToReply extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onReply;
+  const _SwipeToReply({required this.child, required this.onReply});
+  @override
+  State<_SwipeToReply> createState() => _SwipeToReplyState();
+}
+
+class _SwipeToReplyState extends State<_SwipeToReply> with SingleTickerProviderStateMixin {
+  double _drag = 0;
+  bool _triggered = false;
+  late final AnimationController _reset;
+  static const double _threshold = 60;
+  static const double _max = 80;
+
+  @override
+  void initState() {
+    super.initState();
+    _reset = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+  }
+
+  @override
+  void dispose() {
+    _reset.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.read<ThemeProvider>().colors;
+    final progress = (_drag / _threshold).clamp(0.0, 1.0);
+    return Stack(children: [
+      if (_drag > 0)
+        Positioned(left: 8, top: 0, bottom: 0, child: Center(
+          child: Opacity(opacity: progress, child: Transform.scale(
+            scale: 0.5 + progress * 0.5,
+            child: Container(width: 32, height: 32,
+              decoration: BoxDecoration(color: _triggered ? c.accent : c.surfaceLight, shape: BoxShape.circle),
+              child: Icon(Icons.reply, size: 18, color: _triggered ? Colors.white : c.textMuted)),
+          )),
+        )),
+      Transform.translate(
+        offset: Offset(_drag, 0),
+        child: GestureDetector(
+          onHorizontalDragUpdate: (d) {
+            if (d.primaryDelta == null) return;
+            setState(() {
+              _drag = (_drag + d.primaryDelta!).clamp(0, _max);
+              if (!_triggered && _drag >= _threshold) {
+                _triggered = true;
+                HapticFeedback.lightImpact();
+              }
+            });
+          },
+          onHorizontalDragEnd: (_) {
+            if (_triggered) widget.onReply();
+            _triggered = false;
+            final start = _drag;
+            _reset.reset();
+            _reset.addListener(() {
+              setState(() => _drag = start * (1 - _reset.value));
+            });
+            _reset.forward();
+          },
+          child: widget.child,
+        ),
+      ),
+    ]);
+  }
+}
+
+// ── Reply quote inside message bubble ──
+class _ReplyQuote extends StatelessWidget {
+  final String text;
+  final bool isMe;
+  final bool wasFromMe;
+  final AppColors colors;
+  final String? partnerName;
+
+  const _ReplyQuote({required this.text, required this.isMe, required this.wasFromMe, required this.colors, this.partnerName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: (isMe ? Colors.black : colors.surfaceLight).withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: colors.accent, width: 3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(wasFromMe ? 'You' : (partnerName ?? 'Partner'),
+          style: TextStyle(color: colors.accent, fontSize: 11, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(text, maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: (isMe ? colors.meText : colors.themText).withValues(alpha: 0.7), fontSize: 12)),
+      ]),
     );
   }
 }

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,7 +131,4 @@ class CryptoService {
       nonce: salt,
     );
   }
-
-  static final _rng = Random.secure();
-  static int _secureRandom() => _rng.nextInt(256);
 }

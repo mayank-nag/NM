@@ -104,6 +104,78 @@ class WhiteboardScreenState extends State<WhiteboardScreen> {
         _db.clearAllStrokes();
         _updateHomeWidget();
       }
+    } else if (msg['type'] == 'partner_connected') {
+      // Partner just came online — send our full whiteboard state
+      _sendFullSync();
+    } else if (msg['type'] == 'whiteboard_sync') {
+      // Received full whiteboard state from partner — merge strokes
+      _handleFullSync(msg);
+    }
+  }
+
+  /// Send all current strokes to partner as a single sync message.
+  void _sendFullSync() {
+    if (_strokes.isEmpty) return;
+    final strokesData = _strokes.map((s) => {
+      'points': s.points.map((p) => [p.dx, p.dy]).toList(),
+      'color': _colorToHex(s.color),
+      'width': s.width,
+    }).toList();
+    widget.connectionService.send({
+      'type': 'whiteboard_sync',
+      'strokes': strokesData,
+    });
+  }
+
+  /// Handle full whiteboard state from partner.
+  void _handleFullSync(Map<String, dynamic> msg) {
+    final strokesList = msg['strokes'] as List? ?? [];
+    if (strokesList.isEmpty) return;
+
+    final incoming = strokesList.map((s) {
+      final points = (s['points'] as List)
+          .map((p) => Offset((p[0] as num).toDouble(), (p[1] as num).toDouble()))
+          .toList();
+      return StrokeData(
+        points: points,
+        color: _hexToColor(s['color'] as String),
+        width: (s['width'] as num).toDouble(),
+      );
+    }).toList();
+
+    // If we have no strokes, just take the partner's state
+    if (_strokes.isEmpty) {
+      if (mounted) {
+        setState(() => _strokes.addAll(incoming));
+        // Persist all
+        for (final s in strokesList) {
+          _db.insertStroke(
+            pointsJson: jsonEncode(s['points']),
+            color: s['color'] as String,
+            width: (s['width'] as num).toDouble(),
+            isMe: false,
+          );
+        }
+        _updateHomeWidget();
+      }
+    } else {
+      // Merge: add any strokes beyond our current count (simple heuristic)
+      if (incoming.length > _strokes.length) {
+        final newStrokes = incoming.sublist(_strokes.length);
+        final newData = strokesList.sublist(_strokes.length);
+        if (mounted) {
+          setState(() => _strokes.addAll(newStrokes));
+          for (final s in newData) {
+            _db.insertStroke(
+              pointsJson: jsonEncode(s['points']),
+              color: s['color'] as String,
+              width: (s['width'] as num).toDouble(),
+              isMe: false,
+            );
+          }
+          _updateHomeWidget();
+        }
+      }
     }
   }
 
