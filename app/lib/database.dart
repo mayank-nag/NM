@@ -15,6 +15,8 @@ class Messages extends Table {
   TextColumn get shareTitle => text().nullable()(); // title for shared content
   BoolColumn get isMe => boolean()();
   DateTimeColumn get timestamp => dateTime()();
+  TextColumn get replyToContent => text().nullable()(); // quoted message text
+  BoolColumn get replyToIsMe => boolean().nullable()(); // was the quoted msg from me?
 }
 
 class Settings extends Table {
@@ -43,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
   static AppDatabase get instance => _instance ??= AppDatabase._();
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -63,13 +65,18 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.createTable(whiteboardStrokes);
           }
+          if (from < 6) {
+            await m.addColumn(messages, messages.replyToContent);
+            await m.addColumn(messages, messages.replyToIsMe);
+          }
         },
       );
 
   // ── Messages ──
 
   Future<int> insertMessage(String content, bool isMe, DateTime timestamp,
-      {String type = 'text', String? mediaPath, String? shareUrl, String? shareTitle}) {
+      {String type = 'text', String? mediaPath, String? shareUrl, String? shareTitle,
+       String? replyToContent, bool? replyToIsMe}) {
     return into(messages).insert(
       MessagesCompanion.insert(
         content: content,
@@ -79,8 +86,14 @@ class AppDatabase extends _$AppDatabase {
         mediaPath: Value(mediaPath),
         shareUrl: Value(shareUrl),
         shareTitle: Value(shareTitle),
+        replyToContent: Value(replyToContent),
+        replyToIsMe: Value(replyToIsMe),
       ),
     );
+  }
+
+  Future<Message?> getMessageById(int id) {
+    return (select(messages)..where((m) => m.id.equals(id))).getSingleOrNull();
   }
 
   Stream<List<Message>> watchMessages() {

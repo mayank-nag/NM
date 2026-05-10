@@ -130,9 +130,12 @@ class ConnectionService {
         // Plain JSON message — check if it's a system message or encrypted envelope
         if (msg['type'] == 'partner_connected') {
           _updateStatus(ConnectionStatus.partnerOnline);
+          // Also forward to message stream so screens can react
+          _messageController.add(msg);
           return;
         } else if (msg['type'] == 'partner_disconnected') {
           _updateStatus(ConnectionStatus.connected);
+          _messageController.add(msg);
           return;
         } else if (msg['type'] == 'pong') {
           return;
@@ -197,6 +200,26 @@ class ConnectionService {
     _channel?.sink.close();
     _channel = null;
     _updateStatus(ConnectionStatus.disconnected);
+  }
+
+  /// Immediately reconnect (used when app comes back to foreground).
+  /// Resets backoff so reconnection is instant.
+  void forceReconnect() {
+    if (_disposed || _roomId == null) return;
+    if (_currentStatus == ConnectionStatus.partnerOnline ||
+        _currentStatus == ConnectionStatus.connected) {
+      // Already connected — just verify with a ping
+      try {
+        _channel?.sink.add(jsonEncode({'type': 'ping'}));
+      } catch (_) {
+        // Channel is broken — force reconnect
+        _reconnectAttempt = 0;
+        connect(_roomId!);
+      }
+      return;
+    }
+    _reconnectAttempt = 0;
+    connect(_roomId!);
   }
 
   void _updateStatus(ConnectionStatus s) {

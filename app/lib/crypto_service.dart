@@ -7,11 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// End-to-end encryption service using AES-256-GCM.
 ///
 /// The encryption key is derived from a user-chosen passphrase via PBKDF2.
+/// The salt is derived deterministically from the passphrase (via SHA-256)
+/// so that both devices with the same passphrase produce the same key.
 /// Each message gets a unique random nonce (IV). The server only ever sees
 /// encrypted ciphertext — even if compromised, data is unreadable.
 class CryptoService {
   static const _passphraseKey = 'e2e_passphrase';
-  static const _saltKey = 'e2e_salt';
   static const _pbkdf2Iterations = 100000;
   static const _keyBits = 256;
 
@@ -29,16 +30,13 @@ class CryptoService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_passphraseKey, passphrase);
 
-    // Get or create a fixed salt for this device
-    String? saltB64 = prefs.getString(_saltKey);
-    List<int> salt;
-    if (saltB64 != null) {
-      salt = base64Decode(saltB64);
-    } else {
-      // Generate a random salt once and store it
-      salt = List<int>.generate(16, (_) => _secureRandom());
-      await prefs.setString(_saltKey, base64Encode(salt));
-    }
+    // Derive salt deterministically from the passphrase so both devices
+    // with the same passphrase produce the same encryption key.
+    // (Previously each device generated a random salt, meaning the keys
+    //  never matched and all encrypted messages were silently dropped.)
+    final saltInput = utf8.encode('NM_E2E_SALT_$passphrase');
+    final saltHash = await Sha256().hash(saltInput);
+    final salt = saltHash.bytes.sublist(0, 16);
 
     _secretKey = await _deriveKey(passphrase, salt);
   }
@@ -60,7 +58,6 @@ class CryptoService {
     _passphrase = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_passphraseKey);
-    await prefs.remove(_saltKey);
   }
 
   /// Encrypt a JSON message map → base64 ciphertext string.

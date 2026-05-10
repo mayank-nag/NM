@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,6 +22,11 @@ class ThemeProvider extends ChangeNotifier {
   AppThemePack _current = AppThemePack.defaultDark;
   AppThemePack get current => _current;
 
+  /// Optional connection service for syncing theme to partner.
+  /// Set after construction since Provider creates this before connection is ready.
+  dynamic /* ConnectionService */ _connectionService;
+  void attachConnectionService(dynamic cs) => _connectionService = cs;
+
   ThemeProvider() {
     _load();
   }
@@ -37,7 +43,31 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
+  /// Set theme locally and broadcast to partner.
   Future<void> setTheme(AppThemePack theme) async {
+    _current = theme;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_themeKey, theme.name);
+
+    // Broadcast to partner
+    if (_connectionService != null) {
+      try {
+        _connectionService.send({
+          'type': 'theme_update',
+          'theme': theme.name,
+        });
+      } catch (_) {}
+    }
+  }
+
+  /// Apply theme from partner sync (no re-broadcast to prevent echo loop).
+  Future<void> setThemeFromSync(String themeName) async {
+    final theme = AppThemePack.values.firstWhere(
+      (t) => t.name == themeName,
+      orElse: () => AppThemePack.defaultDark,
+    );
+    if (theme == _current) return; // no change
     _current = theme;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();

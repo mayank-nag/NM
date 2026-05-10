@@ -26,7 +26,7 @@ class NMApp extends StatefulWidget {
   State<NMApp> createState() => _NMAppState();
 }
 
-class _NMAppState extends State<NMApp> {
+class _NMAppState extends State<NMApp> with WidgetsBindingObserver {
   final _connectionService = ConnectionService();
   final _navigatorKey = GlobalKey<NavigatorState>();
   bool _loading = true;
@@ -36,13 +36,43 @@ class _NMAppState extends State<NMApp> {
   List<SharedMediaFile>? _pendingSharedFiles;
 
   StreamSubscription? _sharedMediaSub;
+  StreamSubscription? _themeSyncSub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkPairing();
     _setupShareListeners();
     _setupWidgetDeepLink();
+
+    // Wire theme provider to connection service for sync
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final themeProvider = context.read<ThemeProvider>();
+      themeProvider.attachConnectionService(_connectionService);
+      _setupThemeSync(themeProvider);
+    });
+  }
+
+  /// Listen for incoming theme_update messages from partner.
+  void _setupThemeSync(ThemeProvider themeProvider) {
+    _themeSyncSub = _connectionService.messages.listen((msg) {
+      if (msg['type'] == 'theme_update') {
+        final themeName = msg['theme'] as String?;
+        if (themeName != null) {
+          themeProvider.setThemeFromSync(themeName);
+        }
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && _isPaired) {
+      // App came back to foreground — force reconnect immediately
+      _connectionService.forceReconnect();
+    }
   }
 
   Future<void> _checkPairing() async {
@@ -102,7 +132,9 @@ class _NMAppState extends State<NMApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sharedMediaSub?.cancel();
+    _themeSyncSub?.cancel();
     _connectionService.dispose();
     super.dispose();
   }

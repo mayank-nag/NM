@@ -98,6 +98,31 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _replyToContentMeta = const VerificationMeta(
+    'replyToContent',
+  );
+  @override
+  late final GeneratedColumn<String> replyToContent = GeneratedColumn<String>(
+    'reply_to_content',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _replyToIsMeMeta = const VerificationMeta(
+    'replyToIsMe',
+  );
+  @override
+  late final GeneratedColumn<bool> replyToIsMe = GeneratedColumn<bool>(
+    'reply_to_is_me',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("reply_to_is_me" IN (0, 1))',
+    ),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -108,6 +133,8 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     shareTitle,
     isMe,
     timestamp,
+    replyToContent,
+    replyToIsMe,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -172,6 +199,24 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     } else if (isInserting) {
       context.missing(_timestampMeta);
     }
+    if (data.containsKey('reply_to_content')) {
+      context.handle(
+        _replyToContentMeta,
+        replyToContent.isAcceptableOrUnknown(
+          data['reply_to_content']!,
+          _replyToContentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reply_to_is_me')) {
+      context.handle(
+        _replyToIsMeMeta,
+        replyToIsMe.isAcceptableOrUnknown(
+          data['reply_to_is_me']!,
+          _replyToIsMeMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -213,6 +258,14 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}timestamp'],
       )!,
+      replyToContent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reply_to_content'],
+      ),
+      replyToIsMe: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}reply_to_is_me'],
+      ),
     );
   }
 
@@ -231,6 +284,8 @@ class Message extends DataClass implements Insertable<Message> {
   final String? shareTitle;
   final bool isMe;
   final DateTime timestamp;
+  final String? replyToContent;
+  final bool? replyToIsMe;
   const Message({
     required this.id,
     required this.type,
@@ -240,6 +295,8 @@ class Message extends DataClass implements Insertable<Message> {
     this.shareTitle,
     required this.isMe,
     required this.timestamp,
+    this.replyToContent,
+    this.replyToIsMe,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -258,6 +315,12 @@ class Message extends DataClass implements Insertable<Message> {
     }
     map['is_me'] = Variable<bool>(isMe);
     map['timestamp'] = Variable<DateTime>(timestamp);
+    if (!nullToAbsent || replyToContent != null) {
+      map['reply_to_content'] = Variable<String>(replyToContent);
+    }
+    if (!nullToAbsent || replyToIsMe != null) {
+      map['reply_to_is_me'] = Variable<bool>(replyToIsMe);
+    }
     return map;
   }
 
@@ -277,6 +340,12 @@ class Message extends DataClass implements Insertable<Message> {
           : Value(shareTitle),
       isMe: Value(isMe),
       timestamp: Value(timestamp),
+      replyToContent: replyToContent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(replyToContent),
+      replyToIsMe: replyToIsMe == null && nullToAbsent
+          ? const Value.absent()
+          : Value(replyToIsMe),
     );
   }
 
@@ -294,6 +363,8 @@ class Message extends DataClass implements Insertable<Message> {
       shareTitle: serializer.fromJson<String?>(json['shareTitle']),
       isMe: serializer.fromJson<bool>(json['isMe']),
       timestamp: serializer.fromJson<DateTime>(json['timestamp']),
+      replyToContent: serializer.fromJson<String?>(json['replyToContent']),
+      replyToIsMe: serializer.fromJson<bool?>(json['replyToIsMe']),
     );
   }
   @override
@@ -308,6 +379,8 @@ class Message extends DataClass implements Insertable<Message> {
       'shareTitle': serializer.toJson<String?>(shareTitle),
       'isMe': serializer.toJson<bool>(isMe),
       'timestamp': serializer.toJson<DateTime>(timestamp),
+      'replyToContent': serializer.toJson<String?>(replyToContent),
+      'replyToIsMe': serializer.toJson<bool?>(replyToIsMe),
     };
   }
 
@@ -320,6 +393,8 @@ class Message extends DataClass implements Insertable<Message> {
     Value<String?> shareTitle = const Value.absent(),
     bool? isMe,
     DateTime? timestamp,
+    Value<String?> replyToContent = const Value.absent(),
+    Value<bool?> replyToIsMe = const Value.absent(),
   }) => Message(
     id: id ?? this.id,
     type: type ?? this.type,
@@ -329,6 +404,10 @@ class Message extends DataClass implements Insertable<Message> {
     shareTitle: shareTitle.present ? shareTitle.value : this.shareTitle,
     isMe: isMe ?? this.isMe,
     timestamp: timestamp ?? this.timestamp,
+    replyToContent: replyToContent.present
+        ? replyToContent.value
+        : this.replyToContent,
+    replyToIsMe: replyToIsMe.present ? replyToIsMe.value : this.replyToIsMe,
   );
   Message copyWithCompanion(MessagesCompanion data) {
     return Message(
@@ -342,6 +421,12 @@ class Message extends DataClass implements Insertable<Message> {
           : this.shareTitle,
       isMe: data.isMe.present ? data.isMe.value : this.isMe,
       timestamp: data.timestamp.present ? data.timestamp.value : this.timestamp,
+      replyToContent: data.replyToContent.present
+          ? data.replyToContent.value
+          : this.replyToContent,
+      replyToIsMe: data.replyToIsMe.present
+          ? data.replyToIsMe.value
+          : this.replyToIsMe,
     );
   }
 
@@ -355,7 +440,9 @@ class Message extends DataClass implements Insertable<Message> {
           ..write('shareUrl: $shareUrl, ')
           ..write('shareTitle: $shareTitle, ')
           ..write('isMe: $isMe, ')
-          ..write('timestamp: $timestamp')
+          ..write('timestamp: $timestamp, ')
+          ..write('replyToContent: $replyToContent, ')
+          ..write('replyToIsMe: $replyToIsMe')
           ..write(')'))
         .toString();
   }
@@ -370,6 +457,8 @@ class Message extends DataClass implements Insertable<Message> {
     shareTitle,
     isMe,
     timestamp,
+    replyToContent,
+    replyToIsMe,
   );
   @override
   bool operator ==(Object other) =>
@@ -382,7 +471,9 @@ class Message extends DataClass implements Insertable<Message> {
           other.shareUrl == this.shareUrl &&
           other.shareTitle == this.shareTitle &&
           other.isMe == this.isMe &&
-          other.timestamp == this.timestamp);
+          other.timestamp == this.timestamp &&
+          other.replyToContent == this.replyToContent &&
+          other.replyToIsMe == this.replyToIsMe);
 }
 
 class MessagesCompanion extends UpdateCompanion<Message> {
@@ -394,6 +485,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
   final Value<String?> shareTitle;
   final Value<bool> isMe;
   final Value<DateTime> timestamp;
+  final Value<String?> replyToContent;
+  final Value<bool?> replyToIsMe;
   const MessagesCompanion({
     this.id = const Value.absent(),
     this.type = const Value.absent(),
@@ -403,6 +496,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.shareTitle = const Value.absent(),
     this.isMe = const Value.absent(),
     this.timestamp = const Value.absent(),
+    this.replyToContent = const Value.absent(),
+    this.replyToIsMe = const Value.absent(),
   });
   MessagesCompanion.insert({
     this.id = const Value.absent(),
@@ -413,6 +508,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.shareTitle = const Value.absent(),
     required bool isMe,
     required DateTime timestamp,
+    this.replyToContent = const Value.absent(),
+    this.replyToIsMe = const Value.absent(),
   }) : content = Value(content),
        isMe = Value(isMe),
        timestamp = Value(timestamp);
@@ -425,6 +522,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Expression<String>? shareTitle,
     Expression<bool>? isMe,
     Expression<DateTime>? timestamp,
+    Expression<String>? replyToContent,
+    Expression<bool>? replyToIsMe,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -435,6 +534,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       if (shareTitle != null) 'share_title': shareTitle,
       if (isMe != null) 'is_me': isMe,
       if (timestamp != null) 'timestamp': timestamp,
+      if (replyToContent != null) 'reply_to_content': replyToContent,
+      if (replyToIsMe != null) 'reply_to_is_me': replyToIsMe,
     });
   }
 
@@ -447,6 +548,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Value<String?>? shareTitle,
     Value<bool>? isMe,
     Value<DateTime>? timestamp,
+    Value<String?>? replyToContent,
+    Value<bool?>? replyToIsMe,
   }) {
     return MessagesCompanion(
       id: id ?? this.id,
@@ -457,6 +560,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       shareTitle: shareTitle ?? this.shareTitle,
       isMe: isMe ?? this.isMe,
       timestamp: timestamp ?? this.timestamp,
+      replyToContent: replyToContent ?? this.replyToContent,
+      replyToIsMe: replyToIsMe ?? this.replyToIsMe,
     );
   }
 
@@ -487,6 +592,12 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     if (timestamp.present) {
       map['timestamp'] = Variable<DateTime>(timestamp.value);
     }
+    if (replyToContent.present) {
+      map['reply_to_content'] = Variable<String>(replyToContent.value);
+    }
+    if (replyToIsMe.present) {
+      map['reply_to_is_me'] = Variable<bool>(replyToIsMe.value);
+    }
     return map;
   }
 
@@ -500,7 +611,9 @@ class MessagesCompanion extends UpdateCompanion<Message> {
           ..write('shareUrl: $shareUrl, ')
           ..write('shareTitle: $shareTitle, ')
           ..write('isMe: $isMe, ')
-          ..write('timestamp: $timestamp')
+          ..write('timestamp: $timestamp, ')
+          ..write('replyToContent: $replyToContent, ')
+          ..write('replyToIsMe: $replyToIsMe')
           ..write(')'))
         .toString();
   }
@@ -1139,6 +1252,8 @@ typedef $$MessagesTableCreateCompanionBuilder =
       Value<String?> shareTitle,
       required bool isMe,
       required DateTime timestamp,
+      Value<String?> replyToContent,
+      Value<bool?> replyToIsMe,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
     MessagesCompanion Function({
@@ -1150,6 +1265,8 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<String?> shareTitle,
       Value<bool> isMe,
       Value<DateTime> timestamp,
+      Value<String?> replyToContent,
+      Value<bool?> replyToIsMe,
     });
 
 class $$MessagesTableFilterComposer
@@ -1198,6 +1315,16 @@ class $$MessagesTableFilterComposer
 
   ColumnFilters<DateTime> get timestamp => $composableBuilder(
     column: $table.timestamp,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get replyToContent => $composableBuilder(
+    column: $table.replyToContent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get replyToIsMe => $composableBuilder(
+    column: $table.replyToIsMe,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1250,6 +1377,16 @@ class $$MessagesTableOrderingComposer
     column: $table.timestamp,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get replyToContent => $composableBuilder(
+    column: $table.replyToContent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get replyToIsMe => $composableBuilder(
+    column: $table.replyToIsMe,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessagesTableAnnotationComposer
@@ -1286,6 +1423,16 @@ class $$MessagesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get timestamp =>
       $composableBuilder(column: $table.timestamp, builder: (column) => column);
+
+  GeneratedColumn<String> get replyToContent => $composableBuilder(
+    column: $table.replyToContent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get replyToIsMe => $composableBuilder(
+    column: $table.replyToIsMe,
+    builder: (column) => column,
+  );
 }
 
 class $$MessagesTableTableManager
@@ -1324,6 +1471,8 @@ class $$MessagesTableTableManager
                 Value<String?> shareTitle = const Value.absent(),
                 Value<bool> isMe = const Value.absent(),
                 Value<DateTime> timestamp = const Value.absent(),
+                Value<String?> replyToContent = const Value.absent(),
+                Value<bool?> replyToIsMe = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
                 type: type,
@@ -1333,6 +1482,8 @@ class $$MessagesTableTableManager
                 shareTitle: shareTitle,
                 isMe: isMe,
                 timestamp: timestamp,
+                replyToContent: replyToContent,
+                replyToIsMe: replyToIsMe,
               ),
           createCompanionCallback:
               ({
@@ -1344,6 +1495,8 @@ class $$MessagesTableTableManager
                 Value<String?> shareTitle = const Value.absent(),
                 required bool isMe,
                 required DateTime timestamp,
+                Value<String?> replyToContent = const Value.absent(),
+                Value<bool?> replyToIsMe = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
                 type: type,
@@ -1353,6 +1506,8 @@ class $$MessagesTableTableManager
                 shareTitle: shareTitle,
                 isMe: isMe,
                 timestamp: timestamp,
+                replyToContent: replyToContent,
+                replyToIsMe: replyToIsMe,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
